@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<!--
+To change this license header, choose License Headers in Project Properties.
+To change this template file, choose Tools | Templates
+and open the template in the editor.
+-->
+<html>
+    <head>
+        <title>Energy Analyser</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+        <script src="https://code.jquery.com/jquery-3.4.1.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous" samesite="none"></script>
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+        <script src="https://code.jquery.com/ui/1.12.0/jquery-ui.min.js" integrity="sha256-eGE6blurk5sHj+rmkfsGYeKyZx3M4bG+ZlFyA7Kns7E=" crossorigin="anonymous"></script>
+        <script src="js/papaparse.js"></script>
+        <script src="js/moment.js"></script>
+        <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.0.3/nouislider.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/wnumb/1.2.0/wNumb.js"></script>
+
+        <link rel = "stylesheet" type = "text/css" href = "https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.0.3/nouislider.css" />
+        <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.0/themes/smoothness/jquery-ui.css">
+        <link rel = "stylesheet" type = "text/css" href = "css/styles.css" />
+
+        <link rel="shortcut icon" type="image/png" href="images/favicon-192.png"/>
+
+        <script>
+            var files = null;
+            var x = null;
+            var loadedFiles = [];
+            var results = [];
+            var resultsArray = [];
+            var myChart = null;
+            var dailyConsumption = {};
+            var chartTmp = [];
+            var pivotedDailyConsumption = [];
+            // Local file loader code from: https://www.html5rocks.com/en/tutorials/file/dndfiles/
+            // Check for the various File API support.
+            if (window.File && window.FileReader && window.FileList && window.Blob) {
+                // Great success! All the File APIs are supported.
+            } else {
+                alert('The File APIs are not fully supported in this browser.');
+            }
+
+            function loadData()
+            {
+
+                loadedFiles = [];
+
+                // Loop through the FileList
+                for (var i = 0, f; f = files[i]; i++) {
+
+                    // Only process image files.
+                    if (!files[i].type.match('text/csv') && !files[i].type.match('application/vnd.ms-excel') && !files[i].type.match('text/comma-separated-values')) {
+                        continue;
+                    }
+
+
+                    console.log("Processing ..." + files[i].name);
+                    var reader = new FileReader();
+                    // Closure to capture the file information.
+                    if (i === files.length - 1)
+                    {
+                        reader.onload = function (theFile) {
+                            var xTmp = theFile.target.result;
+                            loadedFiles.push(xTmp);
+                            // Process the data if this is the last selected file
+                            processData();
+                            calculateCosts();
+                        };
+                    } else {
+                        reader.onload = function (theFile) {
+                            var xTmp = theFile.target.result;
+                            loadedFiles.push(xTmp);
+                        };
+                    }
+
+                    // Read in the csv file
+                    reader.readAsText(f);
+                }
+            }
+
+            var selected_date_start, selected_date_end, selected_date_start_index, selected_date_end_index;
+            function updateTextDates()
+            {
+                $("#text-date-start").val(selected_date_start.format("YYYY-MM-DD"));
+                $("#text-date-end").val(selected_date_end.format("YYYY-MM-DD"));
+                calculateCosts();
+            }
+
+            function updateDatesFromText()
+            {
+                selected_date_start = moment($("#text-date-start").val());
+                selected_date_end = moment($("#text-date-end").val());
+                selected_date_start_index = selected_date_start.diff(moment(chartTmp[0].x, "DD/MM/YYYY"), 'days');
+                selected_date_end_index = selected_date_end.diff(moment(chartTmp[0].x, "DD/MM/YYYY"), 'days');
+                updateChartSelection();
+                calculateCosts();
+            }
+
+            var layout;
+            function processData()
+            {
+
+                var tmpArray = [];
+                resultsArray = [];
+                var fileNum;
+
+                for (i = 0; i < loadedFiles.length; i++)
+                {
+                    var tmpResults = Papa.parse(loadedFiles[i], {header: true});
+                    resultsArray.push(tmpResults);
+                }
+
+                pivotedDailyConsumption = [];
+                chartTmp = [];
+                for (fileNum = 0; fileNum < resultsArray.length; fileNum++)
+                {
+                    results = resultsArray[fileNum];
+                    for (i = 0; i < results.data.length; i++)
+                    {
+                        if (results.data[i]["CON/GEN"] === "Consumption") {
+
+                            var n = {x: results.data[i]["DATE"], y: Number(results.data[i]["00:00 - 00:30"]) +
+                                        Number(results.data[i]["00:30 - 01:00"]) +
+                                        Number(results.data[i]["01:00 - 01:30"]) +
+                                        Number(results.data[i]["01:30 - 02:00"]) +
+                                        Number(results.data[i]["02:00 - 02:30"]) +
+                                        Number(results.data[i]["02:30 - 03:00"]) +
+                                        Number(results.data[i]["03:00 - 03:30"]) +
+                                        Number(results.data[i]["03:30 - 04:00"]) +
+                                        Number(results.data[i]["04:00 - 04:30"]) +
+                                        Number(results.data[i]["04:30 - 05:00"]) +
+                                        Number(results.data[i]["05:00 - 05:30"]) +
+                                        Number(results.data[i]["05:30 - 06:00"]) +
+                                        Number(results.data[i]["06:00 - 06:30"]) +
+                                        Number(results.data[i]["06:30 - 07:00"]) +
+                                        Number(results.data[i]["07:00 - 07:30"]) +
+                                        Number(results.data[i]["07:30 - 08:00"]) +
+                                        Number(results.data[i]["08:00 - 08:30"]) +
+                                        Number(results.data[i]["08:30 - 09:00"]) +
+                                        Number(results.data[i]["09:00 - 09:30"]) +
+                                        Number(results.data[i]["09:30 - 10:00"]) +
+                                        Number(results.data[i]["10:00 - 10:30"]) +
+                                        Number(results.data[i]["10:30 - 11:00"]) +
+                                        Number(results.data[i]["11:00 - 11:30"]) +
+                                        Number(results.data[i]["11:30 - 12:00"]) +
+                                        Number(results.data[i]["12:00 - 12:30"]) +
+                                        Number(results.data[i]["12:30 - 13:00"]) +
+                                        Number(results.data[i]["13:00 - 13:30"]) +
+                                        Number(results.data[i]["13:30 - 14:00"]) +
+                                        Number(results.data[i]["14:00 - 14:30"]) +
+                                        Number(results.data[i]["14:30 - 15:00"]) +
+                                        Number(results.data[i]["15:00 - 15:30"]) +
+                                        Number(results.data[i]["15:30 - 16:00"]) +
+                                        Number(results.data[i]["16:00 - 16:30"]) +
+                                        Number(results.data[i]["16:30 - 17:00"]) +
+                                        Number(results.data[i]["17:00 - 17:30"]) +
+                                        Number(results.data[i]["17:30 - 18:00"]) +
+                                        Number(results.data[i]["18:00 - 18:30"]) +
+                                        Number(results.data[i]["18:30 - 19:00"]) +
+                                        Number(results.data[i]["19:00 - 19:30"]) +
+                                        Number(results.data[i]["19:30 - 20:00"]) +
+                                        Number(results.data[i]["20:00 - 20:30"]) +
+                                        Number(results.data[i]["20:30 - 21:00"]) +
+                                        Number(results.data[i]["21:00 - 21:30"]) +
+                                        Number(results.data[i]["21:30 - 22:00"]) +
+                                        Number(results.data[i]["22:00 - 22:30"]) +
+                                        Number(results.data[i]["22:30 - 23:00"]) +
+                                        Number(results.data[i]["23:00 - 23:30"]) +
+                                        Number(results.data[i]["23:30 - 00:00"])};
+                            chartTmp.push(n);
+                            tmpArray = [Number(results.data[i]["00:00 - 00:30"]), Number(results.data[i]["00:30 - 01:00"]), Number(results.data[i]["01:00 - 01:30"]), Number(results.data[i]["01:30 - 02:00"]), Number(results.data[i]["02:00 - 02:30"]), Number(results.data[i]["02:30 - 03:00"]), Number(results.data[i]["03:00 - 03:30"]), Number(results.data[i]["03:30 - 04:00"]), Number(results.data[i]["04:00 - 04:30"]), Number(results.data[i]["04:30 - 05:00"]), Number(results.data[i]["05:00 - 05:30"]), Number(results.data[i]["05:30 - 06:00"]), Number(results.data[i]["06:00 - 06:30"]), Number(results.data[i]["06:30 - 07:00"]), Number(results.data[i]["07:00 - 07:30"]), Number(results.data[i]["07:30 - 08:00"]), Number(results.data[i]["08:00 - 08:30"]), Number(results.data[i]["08:30 - 09:00"]), Number(results.data[i]["09:00 - 09:30"]), Number(results.data[i]["09:30 - 10:00"]), Number(results.data[i]["10:00 - 10:30"]), Number(results.data[i]["10:30 - 11:00"]), Number(results.data[i]["11:00 - 11:30"]), Number(results.data[i]["11:30 - 12:00"]), Number(results.data[i]["12:00 - 12:30"]), Number(results.data[i]["12:30 - 13:00"]), Number(results.data[i]["13:00 - 13:30"]), Number(results.data[i]["13:30 - 14:00"]), Number(results.data[i]["14:00 - 14:30"]), Number(results.data[i]["14:30 - 15:00"]), Number(results.data[i]["15:00 - 15:30"]), Number(results.data[i]["15:30 - 16:00"]), Number(results.data[i]["16:00 - 16:30"]), Number(results.data[i]["16:30 - 17:00"]), Number(results.data[i]["17:00 - 17:30"]), Number(results.data[i]["17:30 - 18:00"]), Number(results.data[i]["18:00 - 18:30"]), Number(results.data[i]["18:30 - 19:00"]), Number(results.data[i]["19:00 - 19:30"]), Number(results.data[i]["19:30 - 20:00"]), Number(results.data[i]["20:00 - 20:30"]), Number(results.data[i]["20:30 - 21:00"]), Number(results.data[i]["21:00 - 21:30"]), Number(results.data[i]["21:30 - 22:00"]), Number(results.data[i]["22:00 - 22:30"]), Number(results.data[i]["22:30 - 23:00"]), Number(results.data[i]["23:00 - 23:30"]), Number(results.data[i]["23:30 - 00:00"])];
+                            pivotedDailyConsumption.push({date: moment.utc(results.data[i]["DATE"], "DD/MM/YYYY").toDate(), readings: tmpArray});
+                        }
+                    }
+                }
+
+                selected_date_start = moment(chartTmp[0].x, "DD/MM/YYYY");
+                selected_date_end = moment(chartTmp[chartTmp.length - 1].x, "DD/MM/YYYY");
+                selected_date_start_index = 0;
+                selected_date_end_index = chartTmp.length - 1;
+                updateTextDates();
+                $("#text-date-start").attr({
+                    "min": selected_date_start.format("YYYY-MM-DD"),
+                    "max": selected_date_end.format("YYYY-MM-DD")
+                });
+                $("#text-date-end").attr({
+                    "min": selected_date_start.format("YYYY-MM-DD"),
+                    "max": selected_date_end.format("YYYY-MM-DD")
+                });
+                var data = [
+                    {
+                        x: chartTmp.map(a => a.x),
+                        y: chartTmp.map(a => a.y),
+                        type: 'bar'
+                    }
+                ];
+                // From: https://plot.ly/javascript/range-slider/
+                layout = {
+                    autosize: true,
+                    xaxis: {
+                        fixedrange: true,
+                        tickmode: 'auto',
+                        nticks: 10,
+                        automargin: true
+                    },
+                    yaxis: {
+                        fixedrange: true,
+                        automargin: true
+                    },
+                    selectdirection: "h",
+                    dragmode: "select",
+                    margin: {
+                        t: 25, //top margin
+                        l: 25, //left margin
+                        r: 25, //right margin
+                        b: 25 //bottom margin
+                    }
+                };
+                $("#myDiv").show();
+                myChart = Plotly.newPlot('myDiv', data, layout, {responsive: true});
+
+                var graphDiv = document.getElementById('myDiv');
+                graphDiv.on('plotly_selected', (eventData) => {
+
+                    if (eventData)
+                    {
+                        selected_date_start = moment(eventData.points[0].x, "DD/MM/YYYY");
+                        selected_date_end = moment(eventData.points[eventData.points.length - 1].x, "DD/MM/YYYY");
+                        selected_date_start_index = eventData.points[0].pointIndex;
+                        selected_date_end_index = eventData.points[eventData.points.length - 1].pointIndex;
+                    } else {
+                        selected_date_start = moment(chartTmp[0].x, "DD/MM/YYYY");
+                        selected_date_end = moment(chartTmp[chartTmp.length - 1].x, "DD/MM/YYYY");
+                        selected_date_start_index = 0;
+                        selected_date_end_index = chartTmp.length - 1;
+                    }
+
+                    updateTextDates();
+                });
+            }
+
+            function handleFileSelect(evt) {
+
+                evt.stopPropagation();
+                evt.preventDefault();
+                files = evt.target.files; // FileList object.
+
+                // files is a FileList of File objects. List some properties.
+                var output = [];
+                for (var i = 0, f; f = files[i]; i++) {
+                    output.push('<li>Loaded ... <strong>', escape(f.name).replace(/%20/g, " "), '</strong> (', f.type || 'n/a', ') - ',
+                            f.size, ' bytes, last modified: ',
+                            f.lastModifiedDate ? f.lastModifiedDate.toLocaleDateString() : 'n/a',
+                            '</li>');
+                }
+                document.getElementById('list').innerHTML = '<ul>' + output.join('') + '</ul>';
+                loadData();
+
+            }
+
+            function handleFileDragAndDrop(evt) {
+
+                evt.stopPropagation();
+                evt.preventDefault();
+                files = evt.dataTransfer.files; // FileList object.
+
+                // files is a FileList of File objects. List some properties.
+                var output = [];
+                for (var i = 0, f; f = files[i]; i++) {
+                    output.push('<li>Loaded ... <strong>', escape(f.name).replace(/%20/g, " "), '</strong> (', f.type || 'n/a', ') - ',
+                            f.size, ' bytes, last modified: ',
+                            f.lastModifiedDate ? f.lastModifiedDate.toLocaleDateString() : 'n/a',
+                            '</li>');
+                }
+                document.getElementById('list').innerHTML = '<ul>' + output.join('') + '</ul>';
+                loadData();
+
+            }
+
+            function handleDragOver(evt) {
+                evt.stopPropagation();
+                evt.preventDefault();
+                evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
+            }
+
+
+            function updateChartSelection()
+            {
+                var i;
+                var sp = [];
+
+                // Populate temporary array of selected indices
+                for (i = selected_date_start_index; i <= selected_date_end_index; i++)
+                    sp.push(i);
+
+                var tmpData = [
+                    {
+                        x: chartTmp.map(a => a.x),
+                        y: chartTmp.map(a => a.y),
+                        type: 'bar',
+                        selectedpoints: sp
+                    }
+                ];
+                Plotly.react('myDiv', tmpData, layout, {responsive: true});
+            }
+
+            function addDays(date, days) {
+                var result = new Date(date);
+                result.setDate(result.getDate() + days);
+                return result;
+            }
+
+        </script>
+
+    </head>
+    <body>
+        <h1>Compare Time of Use vs Single Rate</h1>
+
+        <ol>
+            <li>
+                <div>Upload energy data <a class="tooltip-icon" data-toggle="modal" data-target="#myModal">&#9432;</a></div>
+                <script>
+                    $('#myModal').on('shown.bs.modal', function () {
+                        $('#myInput').trigger('focus')
+                    })
+                </script>
+
+                <!-- Modal -->
+                <div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+                    <div class="modal-dialog" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="exampleModalLabel">How to get your energy data</h5>
+                                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Download Electricity data from your distributor website.</p>
+                                <ol>
+                                    <li>Find out your energy distributor <a href="https://www.aer.gov.au/consumers/who-is-my-distributor/victoria" target="_blank">here.</a></li>
+                                    <li>Create an account with your distributor and log in to the portal (for example <a href="https://energyeasy.ue.com.au/" target="_blank">UE's Energy Easy portal</a>).</li>
+                                    <li>Download the "Victorian Energy Compare Data" CSV report.</li>
+                                </ol>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-primary" data-dismiss="modal">Close</button>        
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="drop_zone"><input type="file" id="files" name="files[]" multiple /></div>
+                <script>
+                    // Setup the dnd listeners.
+                    var dropZone = document.getElementById('drop_zone');
+                    dropZone.addEventListener('dragover', handleDragOver, false);
+                    dropZone.addEventListener('drop', handleFileDragAndDrop, false);
+                </script>
+                <output id="list" class="list_loadedFiles"></output>
+            </li>
+
+            <li>
+                <div>Choose date range</div>
+                <div class="row">
+                    <div class="col"><label for="text-date-start"><i>Select start date</i></label><input type="date" class="form-control" id="text-date-start" onchange="updateDatesFromText()"></div>
+                    <div class="col"><label for="text-date-end"><i>Select end date</i></label><input type="date" class="form-control" id="text-date-end" onchange="updateDatesFromText()"> </div>
+                </div>
+                <div id="myDiv" class="dailyConsumption_chart"></div>
+
+            </li>
+            <li>
+                <div>Configure time of use periods and unit price</div>
+                <label for="slider-range-start"><i>Select summer date range start:</i></label>
+                <div class = "multi-slider-section">
+                    <div id="slider-summer-start" class="noUi-target noUi-ltr noUi-horizontal noUi-txt-dir-ltr"></div>
+                </div>
+
+                <label for="slider-range-start"><i>Select summer date range end:</i></label>
+                <div class = "multi-slider-section">
+                    <div id="slider-summer-end" class="noUi-target noUi-ltr noUi-horizontal noUi-txt-dir-ltr"></div>
+                </div>
+
+                <script>
+
+                    // Summer date selection slider
+
+                    var rangeSlider_summer_start = document.getElementById('slider-summer-start');
+                    noUiSlider.create(rangeSlider_summer_start, {
+                        start: [273],
+                        range: {
+                            'min': [0],
+                            'max': [364]
+                        },
+                        step: 1,
+                        tooltips: {
+                            // 'to' the formatted value. Receives a number.
+                            to: function (value) {
+                                return moment(addDays("2019-01-01", parseInt(value))).format("Do MMM");
+                            }
+                        }
+                    });
+
+                    var rangeSlider_summer_end = document.getElementById('slider-summer-end');
+                    noUiSlider.create(rangeSlider_summer_end, {
+                        start: [89],
+                        range: {
+                            'min': [0],
+                            'max': [364]
+                        },
+                        step: 1,
+                        tooltips: {
+                            // 'to' the formatted value. Receives a number.
+                            to: function (value) {
+                                return moment(addDays("2019-01-01", parseInt(value))).format("Do MMM");
+                            }
+                        }
+                    });
+                </script>
+
+                <label for="summer-weekday"><i>Select summer weekday periods:</i></label>
+                <div class = "multi-slider-section">
+                    <div id="slider-summer-weekday"></div>
+                </div>
+
+                <script>
+                    var slider_summer_weekday = document.getElementById('slider-summer-weekday');
+                    var myfunc = {
+                        'to': function (value) {
+                            value /= 2;
+                            var hrs = parseInt(Number(value));
+                            var min = Math.round((Number(value) - hrs) * 60);
+                            return hrs + ':' + (min < 10 ? '0' : '') + min;
+                        },
+                        'from': Number
+                    };
+
+
+                    noUiSlider.create(slider_summer_weekday, {
+                        start: [0, 14, 30, 42, 44, 48],
+                        connect: [true, true, true, true, true, true, true],
+                        tooltips: [myfunc, myfunc, myfunc, myfunc, myfunc, myfunc],
+                        step: 1,
+                        range: {
+                            'min': [0],
+                            'max': [48]
+                        }
+                    });
+                    var connect = slider_summer_weekday.querySelectorAll('.noUi-connect');
+                    var classes = ['offpeak-colour', 'offpeak-colour', 'shoulder-colour', 'peak-colour', 'shoulder-colour', 'offpeak-colour', 'offpeak-colour'];
+                    for (var i = 0; i < connect.length; i++) {
+                        connect[i].classList.add(classes[i]);
+                    }
+
+                    var origins = slider_summer_weekday.getElementsByClassName('noUi-origin');
+                    origins[0].setAttribute('disabled', true);
+                    origins[5].setAttribute('disabled', true);
+                </script>
+
+
+                <label for="summer-weekend"><i>Select summer weekend periods:</i></label>
+                <div class = "multi-slider-section">
+                    <div id="slider-summer-weekend"></div>
+                </div>
+
+                <script>
+                    var slider_summer_weekend = document.getElementById('slider-summer-weekend');
+                    noUiSlider.create(slider_summer_weekend, {
+                        start: [0, 14, 44, 44, 44, 48],
+                        connect: [true, true, true, true, true, true, true],
+                        tooltips: [myfunc, myfunc, myfunc, myfunc, myfunc, myfunc],
+                        step: 1,
+                        range: {
+                            'min': [0],
+                            'max': [48]
+                        }
+                    });
+                    var connect = slider_summer_weekend.querySelectorAll('.noUi-connect');
+                    var classes = ['offpeak-colour', 'offpeak-colour', 'shoulder-colour', 'peak-colour', 'shoulder-colour', 'offpeak-colour', 'offpeak-colour'];
+                    for (var i = 0; i < connect.length; i++) {
+                        connect[i].classList.add(classes[i]);
+                    }
+
+                    var origins = slider_summer_weekend.getElementsByClassName('noUi-origin');
+                    origins[0].setAttribute('disabled', true);
+                    origins[5].setAttribute('disabled', true);
+                </script>
+
+
+                <label for="non-summer-weekday"><i>Select non-summer weekday periods:</i></label>
+                <div class = "multi-slider-section">
+                    <div id="slider-non-summer-weekday"></div>
+                </div>
+
+                <script>
+                    var slider_non_summer_weekday = document.getElementById('slider-non-summer-weekday');
+                    noUiSlider.create(slider_non_summer_weekday, {
+                        start: [0, 14, 30, 42, 44, 48],
+                        connect: [true, true, true, true, true, true, true],
+                        tooltips: [myfunc, myfunc, myfunc, myfunc, myfunc, myfunc],
+                        step: 1,
+                        range: {
+                            'min': [0],
+                            'max': [48]
+                        }
+                    });
+                    var connect = slider_non_summer_weekday.querySelectorAll('.noUi-connect');
+                    var classes = ['offpeak-colour', 'offpeak-colour', 'shoulder-colour', 'peak-colour', 'shoulder-colour', 'offpeak-colour', 'offpeak-colour'];
+                    for (var i = 0; i < connect.length; i++) {
+                        connect[i].classList.add(classes[i]);
+                    }
+
+                    var origins = slider_non_summer_weekday.getElementsByClassName('noUi-origin');
+                    origins[0].setAttribute('disabled', true);
+                    origins[5].setAttribute('disabled', true);
+                </script>
+
+
+                <label for="non-summer-weekend"><i>Select non-summer weekend periods:</i></label>
+                <div class = "multi-slider-section">
+                    <div id="slider-non-summer-weekend"></div>
+                </div>
+
+                <script>
+                    var slider_non_summer_weekend = document.getElementById('slider-non-summer-weekend');
+                    noUiSlider.create(slider_non_summer_weekend, {
+                        start: [0, 14, 44, 44, 44, 48],
+                        connect: [true, true, true, true, true, true, true],
+                        tooltips: [myfunc, myfunc, myfunc, myfunc, myfunc, myfunc],
+                        step: 1,
+                        range: {
+                            'min': [0],
+                            'max': [48]
+                        }
+                    });
+                    var connect = slider_non_summer_weekend.querySelectorAll('.noUi-connect');
+                    var classes = ['offpeak-colour', 'offpeak-colour', 'shoulder-colour', 'peak-colour', 'shoulder-colour', 'offpeak-colour', 'offpeak-colour'];
+                    for (var i = 0; i < connect.length; i++) {
+                        connect[i].classList.add(classes[i]);
+                    }
+
+                    var origins = slider_non_summer_weekend.getElementsByClassName('noUi-origin');
+                    origins[0].setAttribute('disabled', true);
+                    origins[5].setAttribute('disabled', true);
+                    function updateSlider(val, id) {
+                        document.getElementById(id).value = val;
+                    }
+
+                </script>
+            </li>
+            <li>
+                <div>Select unit prices and find the cheapest option</div>
+                <div class="summary_text" id="summary_text"></div>
+                <div class="divTable">
+                    <div class="divTableBody">
+                        <div class="divTableRow">
+                            <div class="divTableCell pricingOption_general" id="pricingOption_tou"> <h4>Time of use</h4>
+                                <table class = "sliderTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:250px"></th>
+                                            <th></th>
+                                            <th style="width:100px"></th>
+                                            <th style="width:100px">Units</th>
+                                            <th style="width:100px">Cost</
+                                        </tr>
+                                    </thead>
+
+                                    <tr><td>☁ Peak</td>
+                                        <td><input type="range" min="0" max="1" value="0.3894" step="0.0001" class="slider non_summer" id="slider_non_summer_peak"></td>
+                                        <td><div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_peak" value="0.3894" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_non_summer_peak');"></div></td>
+                                        <td><div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_peak_total_volume" disabled></div></td>
+                                        <td><div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_peak_total_price" disabled></div></td>
+                                    </tr>
+
+
+                                    <tr><td>☁ Weekday off peak</td>
+                                        <td><input type="range" min="0" max="1" value="0.2596" step="0.0001" class="slider non_summer" id="slider_non_summer_weekday_offpeak"></td>
+                                        <td><div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekday_offpeak" value="0.2596" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_non_summer_weekday_offpeak');"></div></td>
+                                        <td><div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekday_offpeak_total_volume" disabled></div></td>
+                                        <td><div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekday_offpeak_total_price" disabled></div></td>
+                                    </tr>
+                                    <tr><td>☁ Weekend off peak</td>
+                                        <td> <input type="range" min="0" max="1" value="0.2596" step="0.0001" class="slider non_summer" id="slider_non_summer_weekend_offpeak"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekend_offpeak" value="0.2596" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_non_summer_weekend_offpeak');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekend_offpeak_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekend_offpeak_total_price" disabled></div></td>
+                                    </tr>
+
+                                    <tr><td>☁ Weekday shoulder</td>
+                                        <td> <input type="range" min="0" max="1" value="0.2805" step="0.0001" class="slider non_summer" id="slider_non_summer_weekday_shoulder"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekday_shoulder" value="0.2805" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_non_summer_weekday_shoulder');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekday_shoulder_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekday_shoulder_total_price" disabled></div></td>
+                                    </tr>
+
+                                    <tr><td>☁ Weekend shoulder</td>
+                                        <td> <input type="range" min="0" max="1" value="0.2805" step="0.0001" class="slider non_summer" id="slider_non_summer_weekend_shoulder"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekend_shoulder" value="0.2805" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_non_summer_weekend_shoulder');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekend_shoulder_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_non_summer_weekend_shoulder_total_price" disabled></div></td>
+                                    </tr>
+
+
+
+                                    <tr><td>☀ Summer Peak</td>
+                                        <td><input type="range" min="0" max="1" value="0.4972" step="0.0001" class="slider summer" id="slider_summer_peak"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_peak" value="0.4972" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_summer_peak');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_peak_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_peak_total_price" disabled></div></td>
+                                    </tr>
+
+
+                                    <tr><td>☀ Summer Weekday off peak</td>
+                                        <td> <input type="range" min="0" max="1" value="0.2596" step="0.0001"  class="slider summer" id="slider_summer_weekday_offpeak"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekday_offpeak" value="0.2596" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_summer_weekday_offpeak');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekday_offpeak_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekday_offpeak_total_price" disabled></div></td>
+                                    </tr>
+                                    <tr><td>☀ Summer Weekend off peak</td>
+                                        <td> <input type="range" min="0" max="1" value="0.2596" step="0.0001"  class="slider summer" id="slider_summer_weekend_offpeak"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekend_offpeak" value="0.2596" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_summer_weekend_offpeak');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekend_offpeak_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekend_offpeak_total_price" disabled></div></td>
+                                    </tr>
+
+                                    <tr><td>☀ Summer Weekday shoulder</td>
+                                        <td> <input type="range" min="0" max="1" value="0.2915" step="0.0001"  class="slider summer" id="slider_summer_weekday_shoulder"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekday_shoulder" value="0.2915" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_summer_weekday_shoulder');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekday_shoulder_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekday_shoulder_total_price" disabled></div></td>
+                                    </tr>
+
+                                    <tr><td>☀ Summer Weekend shoulder</td>
+                                        <td> <input type="range" min="0" max="1" value="0.2915" step="0.0001"  class="slider summer" id="slider_summer_weekend_shoulder"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekend_shoulder" value="0.2915" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_summer_weekend_shoulder');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekend_shoulder_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_summer_weekend_shoulder_total_price" disabled></div></td>
+                                    </tr>
+
+
+                                    <tr><td>⌚ Daily supply charge</td>
+                                        <td> <input type="range" min="0" max="2" value="1.1869" step="0.0001"  class="slider" id="slider_supplyCharge"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_supplyCharge" value="1.1869" step="0.0001" min="0" max="2" onchange="updateSlider(this.value, 'slider_supplyCharge');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_supplyCharge_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_supplyCharge_total_price" disabled></div></td>
+                                    </tr>
+
+                                    <tr><td><em>Total</em></td>
+                                        <td class="total_column"></td>
+                                        <td class="total_column"></td>
+                                        <td class="total_column"></td>
+                                        <td class="total_column"><div class="col-xs-2"><input type="number" class="form-control" id="myCost" disabled></div></td>
+                                    </tr>
+
+
+                                </table></div>
+                            <div class="divTableCell"></div>
+                            <div class="divTableCell pricingOption_general" id="pricingOption_flat"><h4>Single rate</h4>
+                                <table class="sliderTable">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:250px"></th>
+                                            <th></th>
+                                            <th style="width:100px"></th>
+                                            <th style="width:100px">Units</th>
+                                            <th style="width:100px">Cost</th>
+                                        </tr>
+                                    </thead>
+                                    <tr><td>↔ Single rate</td>
+                                        <td><input type="range" min="0" max="1" value="0.2596" step="0.0001" class="slider non_summer" id="slider_flat"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_flat" value="0.2596" step="0.0001" min="0" max="1" onchange="updateSlider(this.value, 'slider_flat');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_flat_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_flat_total_price" disabled></div></td>
+                                    </tr>
+
+                                    <tr><td>⌚ Daily supply charge</td>
+                                        <td><input type="range" min="0" max="2" value="1.1869" step="0.0001" class="slider" id="slider_flat_supplyCharge"></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_flat_supplyCharge" value="1.1869" step="0.0001" min="0" max="2" onchange="updateSlider(this.value, 'slider_flat_supplyCharge');"></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_flat_supplyCharge_total_volume" disabled></div></td>
+                                        <td> <div class="col-xs-2"><input type="number" class="form-control" id="text_flat_supplyCharge_total_price" disabled></div></td>
+                                    </tr>
+                                    <tr><td><em>Total</em></td>
+                                        <td class="total_column"></td>
+                                        <td class="total_column"></td>
+                                        <td class="total_column"></td>
+                                        <td class="total_column"><div class="col-xs-2"><input type="number" class="form-control" id="myCost_flat" disabled></div></td>
+                                    </tr>
+
+                                </table></div>
+                        </div>
+                    </div>
+                </div>
+
+            </li>
+        </ol>
+
+        <script>
+            var summerPeriodStart;
+            var summerPeriodEnd;
+            function isWeekday(date)
+            {
+                var dayOfWeek = moment.utc(date).day();
+                var dateString = moment.utc(date).format("YYYY-MM-DD");
+                if ((dayOfWeek === 0) || (dayOfWeek === 6))
+                {
+                    return false;
+                }
+                // Check whether public holiday (Victoria, Australia only)
+                var publicHolidays = ["2017-01-02", "2017-01-26", "2017-03-13", "2017-04-14", "2017-04-17", "2017-04-25", "2017-06-12", "2017-09-29", "2017-11-07", "2017-12-25", "2017-09-26",
+                    "2018-01-01", "2018-01-26", "2018-03-12", "2018-03-30", "2018-04-02", "2018-04-25", "2018-06-11", "2018-09-28", "2018-11-06", "2018-12-25", "2018-09-26",
+                    "2019-01-01", "2019-01-28", "2019-03-11", "2019-04-19", "2019-04-22", "2019-04-25", "2019-06-10", "2019-09-27", "2019-11-05", "2019-12-25", "2019-09-26",
+                    "2020-01-01", "2020-01-27", "2020-03-09", "2020-04-10", "2020-04-13", "2020-04-25", "2020-06-08", "2020-09-25", "2020-11-03", "2020-12-25", "2020-09-26",
+                    "2021-01-01", "2021-01-26", "2021-03-08", "2021-04-02", "2021-04-05", "2021-04-25", "2021-06-14", "2021-09-24", "2021-11-02", "2021-12-27", "2021-12-28"];
+                if (publicHolidays.includes(dateString))
+                    return false;
+                return true;
+            }
+
+            function isDateSummer(date)
+            {
+                var isSummer = null;
+                var dateDayOfYear = moment.utc(date).dayOfYear();
+                summerPeriodStart = parseInt(rangeSlider_summer_start.noUiSlider.get()) + 1;
+                summerPeriodEnd = parseInt(rangeSlider_summer_end.noUiSlider.get()) + 1;
+                if (summerPeriodStart <= summerPeriodEnd)
+                {
+                    if ((dateDayOfYear >= summerPeriodStart) && (dateDayOfYear <= summerPeriodEnd))
+                    {
+                        isSummer = true;
+                    } else
+                    {
+                        isSummer = false;
+                    }
+                } else if (summerPeriodStart > summerPeriodEnd)
+                {
+                    if ((dateDayOfYear >= summerPeriodStart) || (dateDayOfYear <= summerPeriodEnd))
+                    {
+                        isSummer = true;
+                    } else
+                    {
+                        isSummer = false;
+                    }
+                }
+
+                return isSummer;
+            }
+
+
+            var summerWeekdayPrices = [];
+            var summerWeekendPrices = [];
+            var nonSummerWeekdayPrices = [];
+            var nonSummerWeekendPrices = [];
+            var price_non_summer_peak, price_non_summer_weekday_offpeak, price_non_summer_weekend_offpeak, price_non_summer_weekday_shoulder, price_non_summer_weekend_shoulder, price_summer_peak, price_summer_weekday_offpeak, price_summer_weekend_offpeak, price_summer_weekday_shoulder, price_summer_weekend_shoulder, price_supplyCharge;
+            function getPriceArrays()
+            {
+
+                var i, price;
+                var selectedPeriod;
+                summerWeekdayPrices = [];
+                summerWeekendPrices = [];
+                nonSummerWeekdayPrices = [];
+                nonSummerWeekendPrices = [];
+                price_non_summer_peak = $('#slider_non_summer_peak').val();
+                price_non_summer_weekday_offpeak = $('#slider_non_summer_weekday_offpeak').val();
+                price_non_summer_weekend_offpeak = $('#slider_non_summer_weekend_offpeak').val();
+                price_non_summer_weekday_shoulder = $('#slider_non_summer_weekday_shoulder').val();
+                price_non_summer_weekend_shoulder = $('#slider_non_summer_weekend_shoulder').val();
+                price_summer_peak = $('#slider_summer_peak').val();
+                price_summer_weekday_offpeak = $('#slider_summer_weekday_offpeak').val();
+                price_summer_weekend_offpeak = $('#slider_summer_weekend_offpeak').val();
+                price_summer_weekday_shoulder = $('#slider_summer_weekday_shoulder').val();
+                price_summer_weekend_shoulder = $('#slider_summer_weekend_shoulder').val();
+                price_supplyCharge = $('#slider_supplyCharge').val();
+                price_flat = $('#slider_flat').val();
+                price_flat_supplyCharge = $('#slider_flat_supplyCharge').val();
+                // Set summerWeekdayPrices
+                var summerWeekdayPeriods = slider_summer_weekday.noUiSlider.get();
+                selectedPeriod = 0;
+                for (i = 1; i <= 48; i++)
+                {
+                    // Advance slider iterator to the relevant period
+                    while ((i > summerWeekdayPeriods[selectedPeriod]) && (selectedPeriod < summerWeekdayPeriods.length) && (summerWeekdayPeriods[selectedPeriod] === summerWeekdayPeriods[selectedPeriod + 1]))
+                    {
+                        selectedPeriod++;
+                    }
+                    while ((selectedPeriod < summerWeekdayPeriods.length) && (i > summerWeekdayPeriods[selectedPeriod]) && (i <= summerWeekdayPeriods[selectedPeriod + 1]))
+                    {
+                        selectedPeriod++;
+                    }
+
+                    switch (selectedPeriod) {
+                        case 1:
+                            price = "O"; //price_summer_weekday_offpeak;
+                            break;
+                        case 2:
+                            price = "S"; //price_summer_weekday_shoulder;
+                            break;
+                        case 3:
+                            price = "P"; // price_summer_peak;
+                            break;
+                        case 4:
+                            price = "S"; //price_summer_weekday_shoulder;
+                            break;
+                        case 5:
+                            price = "O"; //price_summer_weekday_offpeak;
+                            break;
+                    }
+                    summerWeekdayPrices.push(price);
+                }
+
+                // Set summerWeekendPrices
+                var summerWeekendPeriods = slider_summer_weekend.noUiSlider.get();
+                selectedPeriod = 0;
+                for (i = 1; i <= 48; i++)
+                {
+
+                    // Advance slider iterator to the relevant period
+                    while ((i > summerWeekendPeriods[selectedPeriod]) && (selectedPeriod < summerWeekendPeriods.length) && (summerWeekendPeriods[selectedPeriod] === summerWeekendPeriods[selectedPeriod + 1]))
+                    {
+                        selectedPeriod++;
+                    }
+                    while ((selectedPeriod < summerWeekendPeriods.length) && (i > summerWeekendPeriods[selectedPeriod]) && (i <= summerWeekendPeriods[selectedPeriod + 1]))
+                    {
+                        selectedPeriod++;
+                    }
+
+                    switch (selectedPeriod) {
+                        case 1:
+                            price = "O"; //price_summer_weekend_offpeak;
+                            break;
+                        case 2:
+                            price = "S"; //price_summer_weekend_shoulder;
+                            break;
+                        case 3:
+                            price = "P"; //price_summer_peak;
+                            break;
+                        case 4:
+                            price = "S"; //price_summer_weekend_shoulder;
+                            break;
+                        case 5:
+                            price = "O"; //price_summer_weekend_offpeak;
+                            break;
+                    }
+                    summerWeekendPrices.push(price);
+                }
+
+                // Set nonSummerWeekdayPrices
+                var nonSummerWeekdayPeriods = slider_non_summer_weekday.noUiSlider.get();
+                selectedPeriod = 0;
+                for (i = 1; i <= 48; i++)
+                {
+                    // Advance slider iterator to the relevant period
+                    while ((i > nonSummerWeekdayPeriods[selectedPeriod]) && (selectedPeriod < nonSummerWeekdayPeriods.length) && (nonSummerWeekdayPeriods[selectedPeriod] === nonSummerWeekdayPeriods[selectedPeriod + 1]))
+                    {
+                        selectedPeriod++;
+                    }
+                    while ((selectedPeriod < nonSummerWeekdayPeriods.length) && (i > nonSummerWeekdayPeriods[selectedPeriod]) && (i <= nonSummerWeekdayPeriods[selectedPeriod + 1]))
+                    {
+                        selectedPeriod++;
+                    }
+
+                    switch (selectedPeriod) {
+                        case 1:
+                            price = "O"; // price_non_summer_weekday_offpeak;
+                            break;
+                        case 2:
+                            price = "S"; //price_non_summer_weekday_shoulder;
+                            break;
+                        case 3:
+                            price = "P"; //price_non_summer_peak;
+                            break;
+                        case 4:
+                            price = "S"; //price_non_summer_weekday_shoulder;
+                            break;
+                        case 5:
+                            price = "O"; //price_non_summer_weekday_offpeak;
+                            break;
+                    }
+                    nonSummerWeekdayPrices.push(price);
+                }
+
+
+                // Set nonSummerWeekendPrices
+                var nonSummerWeekendPeriods = slider_non_summer_weekend.noUiSlider.get();
+                selectedPeriod = 0;
+                for (i = 1; i <= 48; i++)
+                {
+
+                    // Advance slider iterator to the relevant period
+                    while ((i > nonSummerWeekendPeriods[selectedPeriod]) && (selectedPeriod < nonSummerWeekendPeriods.length) && (nonSummerWeekendPeriods[selectedPeriod] === nonSummerWeekendPeriods[selectedPeriod + 1]))
+                    {
+                        selectedPeriod++;
+                    }
+                    while ((selectedPeriod < nonSummerWeekendPeriods.length) && (i > nonSummerWeekendPeriods[selectedPeriod]) && (i <= nonSummerWeekendPeriods[selectedPeriod + 1]))
+                    {
+                        selectedPeriod++;
+                    }
+
+                    switch (selectedPeriod) {
+                        case 1:
+                            price = "O"; //price_non_summer_weekend_offpeak;
+                            break;
+                        case 2:
+                            price = "S"; //price_non_summer_weekend_shoulder;
+                            break;
+                        case 3:
+                            price = "P"; //price_non_summer_peak;
+                            break;
+                        case 4:
+                            price = "S"; //price_non_summer_weekend_shoulder;
+                            break;
+                        case 5:
+                            price = "O"; //price_non_summer_weekend_offpeak;
+                            break;
+                    }
+                    nonSummerWeekendPrices.push(price);
+                }
+
+
+            }
+
+            var total_non_summer_peak;
+            var total_non_summer_weekday_offpeak;
+            var total_non_summer_weekend_offpeak;
+            var total_non_summer_weekday_shoulder;
+            var total_non_summer_weekend_shoulder;
+            var total_summer_peak;
+            var total_summer_weekday_offpeak;
+            var total_summer_weekend_offpeak;
+            var total_summer_weekday_shoulder;
+            var total_summer_weekend_shoulder;
+            var total_supplyCharge;
+            var total_flat;
+            var total_flat_supplyCharge;
+            function calculateCosts()
+            {
+                var totalCost = 10;
+                var i, j, p, o, s;
+                total_non_summer_peak = 0;
+                total_non_summer_weekday_offpeak = 0;
+                total_non_summer_weekend_offpeak = 0;
+                total_non_summer_weekday_shoulder = 0;
+                total_non_summer_weekend_shoulder = 0;
+                total_summer_peak = 0;
+                total_summer_weekday_offpeak = 0;
+                total_summer_weekend_offpeak = 0;
+                total_summer_weekday_shoulder = 0;
+                total_summer_weekend_shoulder = 0;
+                total_supplyCharge = 0;
+                total_flat = 0;
+                total_flat_supplyCharge = 0;
+                getPriceArrays();
+                for (i = selected_date_start_index; i <= selected_date_end_index; i++)
+                {
+                    total_supplyCharge++;
+                    total_flat_supplyCharge++;
+                    // Update flat costs
+                    for (j = 0; j < 48; j++) {
+                        total_flat += pivotedDailyConsumption[i].readings[j];
+                    }
+
+
+                    var currentDate = pivotedDailyConsumption[i].date;
+                    if (isDateSummer(currentDate)) {
+                        if (isWeekday(currentDate))
+                        {
+
+                            for (j = 0; j < 48; j++)
+                            {
+                                switch (summerWeekdayPrices[j])
+                                {
+                                    case 'O':
+                                        total_summer_weekday_offpeak += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                    case 'S':
+                                        total_summer_weekday_shoulder += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                    case 'P':
+                                        total_summer_peak += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                }
+                            }
+
+                        } else
+                        {
+
+                            for (j = 0; j < 48; j++)
+                            {
+                                switch (summerWeekendPrices[j])
+                                {
+                                    case 'O':
+                                        total_summer_weekend_offpeak += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                    case 'S':
+                                        total_summer_weekend_shoulder += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                    case 'P':
+                                        total_summer_peak += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                }
+                            }
+
+                        }
+                    } else
+                    {
+
+                        if (isWeekday(currentDate))
+                        {
+
+
+                            for (j = 0; j < 48; j++)
+                            {
+                                switch (nonSummerWeekdayPrices[j])
+                                {
+                                    case 'O':
+                                        total_non_summer_weekday_offpeak += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                    case 'S':
+                                        total_non_summer_weekday_shoulder += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                    case 'P':
+                                        total_non_summer_peak += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                }
+                            }
+
+                        } else
+                        {
+
+
+                            for (j = 0; j < 48; j++)
+                            {
+                                switch (nonSummerWeekendPrices[j])
+                                {
+                                    case 'O':
+                                        total_non_summer_weekend_offpeak += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                    case 'S':
+                                        total_non_summer_weekend_shoulder += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                    case 'P':
+                                        total_non_summer_peak += pivotedDailyConsumption[i].readings[j];
+                                        break;
+                                }
+                            }
+
+                        }
+                    }
+
+                }
+
+                totalCost = total_non_summer_peak * price_non_summer_peak
+                        + total_non_summer_weekday_offpeak * price_non_summer_weekday_offpeak
+                        + total_non_summer_weekend_offpeak * price_non_summer_weekend_offpeak
+                        + total_non_summer_weekday_shoulder * price_non_summer_weekday_shoulder
+                        + total_non_summer_weekend_shoulder * price_non_summer_weekend_shoulder
+                        + total_summer_peak * price_summer_peak
+                        + total_summer_weekday_offpeak * price_summer_weekday_offpeak
+                        + total_summer_weekend_offpeak * price_summer_weekend_offpeak
+                        + total_summer_weekday_shoulder * price_summer_weekday_shoulder
+                        + total_summer_weekend_shoulder * price_summer_weekend_shoulder
+                        + total_supplyCharge * price_supplyCharge;
+                totalCost_flat = total_flat * price_flat + total_flat_supplyCharge * price_flat_supplyCharge;
+                $("#text_non_summer_peak_total_price").val(parseFloat(total_non_summer_peak * price_non_summer_peak).toFixed(2));
+                $("#text_non_summer_peak_total_volume").val(parseFloat(total_non_summer_peak).toFixed(3));
+                $("#text_non_summer_weekday_offpeak_total_price").val(parseFloat(total_non_summer_weekday_offpeak * price_non_summer_weekday_offpeak).toFixed(2));
+                $("#text_non_summer_weekday_offpeak_total_volume").val(parseFloat(total_non_summer_weekday_offpeak).toFixed(3));
+                $("#text_non_summer_weekend_offpeak_total_price").val(parseFloat(total_non_summer_weekend_offpeak * price_non_summer_weekend_offpeak).toFixed(2));
+                $("#text_non_summer_weekend_offpeak_total_volume").val(parseFloat(total_non_summer_weekend_offpeak).toFixed(3));
+                $("#text_non_summer_weekday_shoulder_total_price").val(parseFloat(total_non_summer_weekday_shoulder * price_non_summer_weekday_shoulder).toFixed(2));
+                $("#text_non_summer_weekday_shoulder_total_volume").val(parseFloat(total_non_summer_weekday_shoulder).toFixed(3));
+                $("#text_non_summer_weekend_shoulder_total_price").val(parseFloat(total_non_summer_weekend_shoulder * price_non_summer_weekend_shoulder).toFixed(2));
+                $("#text_non_summer_weekend_shoulder_total_volume").val(parseFloat(total_non_summer_weekend_shoulder).toFixed(3));
+                $("#text_summer_peak_total_price").val(parseFloat(total_summer_peak * price_summer_peak).toFixed(2));
+                $("#text_summer_peak_total_volume").val(parseFloat(total_summer_peak).toFixed(3));
+                $("#text_summer_weekday_offpeak_total_price").val(parseFloat(total_summer_weekday_offpeak * price_summer_weekday_offpeak).toFixed(2));
+                $("#text_summer_weekday_offpeak_total_volume").val(parseFloat(total_summer_weekday_offpeak).toFixed(3));
+                $("#text_summer_weekend_offpeak_total_price").val(parseFloat(total_summer_weekend_offpeak * price_summer_weekend_offpeak).toFixed(2));
+                $("#text_summer_weekend_offpeak_total_volume").val(parseFloat(total_summer_weekend_offpeak).toFixed(3));
+                $("#text_summer_weekday_shoulder_total_price").val(parseFloat(total_summer_weekday_shoulder * price_summer_weekday_shoulder).toFixed(2));
+                $("#text_summer_weekday_shoulder_total_volume").val(parseFloat(total_summer_weekday_shoulder).toFixed(3));
+                $("#text_summer_weekend_shoulder_total_price").val(parseFloat(total_summer_weekend_shoulder * price_summer_weekend_shoulder).toFixed(2));
+                $("#text_summer_weekend_shoulder_total_volume").val(parseFloat(total_summer_weekend_shoulder).toFixed(3));
+                $("#text_supplyCharge_total_price").val(parseFloat(total_supplyCharge * price_supplyCharge).toFixed(2));
+                $("#text_supplyCharge_total_volume").val(parseFloat(total_supplyCharge).toFixed(3));
+                $("#text_flat_supplyCharge_total_price").val(parseFloat(total_flat_supplyCharge * price_flat_supplyCharge).toFixed(2));
+                $("#text_flat_supplyCharge_total_volume").val(parseFloat(total_flat_supplyCharge).toFixed(3));
+                $("#text_flat_total_price").val(parseFloat(total_flat * price_flat).toFixed(2));
+                $("#text_flat_total_volume").val(parseFloat(total_flat).toFixed(3));
+                $("#myCost").val(parseFloat(totalCost).toFixed(2));
+                $("#myCost_flat").val(parseFloat(totalCost_flat).toFixed(2));
+
+                var costDifference_absolute = Math.abs(totalCost - totalCost_flat);
+                var costDifference_percentage = 100 * Math.abs((totalCost - totalCost_flat) / ((totalCost + totalCost_flat) / 2));
+
+                if (totalCost_flat < totalCost)
+                {
+                    $("#pricingOption_flat").addClass("pricingOption_cheapest");
+                    $("#pricingOption_tou").removeClass("pricingOption_cheapest");
+                    $("#summary_text").text("Save $" + parseFloat(costDifference_absolute).toFixed(2) + " (" + parseFloat(costDifference_percentage).toFixed(0) + "%) by switching to Single Rate!");
+                    $("#summary_text").show();
+                } else if (totalCost < totalCost_flat)
+                {
+                    $("#pricingOption_tou").addClass("pricingOption_cheapest");
+                    $("#pricingOption_flat").removeClass("pricingOption_cheapest");
+                    $("#summary_text").text("Save $" + parseFloat(costDifference_absolute).toFixed(2) + " (" + parseFloat(costDifference_percentage).toFixed(0) + "%) by switching to Time of Use!");
+                    $("#summary_text").show();
+                }
+
+            }
+        </script>
+
+        <script>
+            // Recalculate costs if a price slider moves, and change price text inputs
+            document.getElementById('files').addEventListener('change', handleFileSelect, false);
+            $('#slider_non_summer_peak').on('input', function () {
+                $('#text_non_summer_peak').val($('#slider_non_summer_peak').val());
+                calculateCosts();
+            });
+            $('#slider_non_summer_weekday_offpeak').on('input', function () {
+                $('#text_non_summer_weekday_offpeak').val($('#slider_non_summer_weekday_offpeak').val());
+                calculateCosts();
+            });
+            $('#slider_non_summer_weekend_offpeak').on('input', function () {
+                $('#text_non_summer_weekend_offpeak').val($('#slider_non_summer_weekend_offpeak').val());
+                calculateCosts();
+            });
+            $('#slider_non_summer_weekday_shoulder').on('input', function () {
+                $('#text_non_summer_weekday_shoulder').val($('#slider_non_summer_weekday_shoulder').val());
+                calculateCosts();
+            });
+            $('#slider_non_summer_weekend_shoulder').on('input', function () {
+                $('#text_non_summer_weekend_shoulder').val($('#slider_non_summer_weekend_shoulder').val());
+                calculateCosts();
+            });
+            $('#slider_summer_peak').on('input', function () {
+                $('#text_summer_peak').val($('#slider_summer_peak').val());
+                calculateCosts();
+            });
+            $('#slider_summer_weekday_offpeak').on('input', function () {
+                $('#text_summer_weekday_offpeak').val($('#slider_summer_weekday_offpeak').val());
+                calculateCosts();
+            });
+            $('#slider_summer_weekend_offpeak').on('input', function () {
+                $('#text_summer_weekend_offpeak').val($('#slider_summer_weekend_offpeak').val());
+                calculateCosts();
+            });
+            $('#slider_summer_weekday_shoulder').on('input', function () {
+                $('#text_summer_weekday_shoulder').val($('#slider_summer_weekday_shoulder').val());
+                calculateCosts();
+            });
+            $('#slider_summer_weekend_shoulder').on('input', function () {
+                $('#text_summer_weekend_shoulder').val($('#slider_summer_weekend_shoulder').val());
+                calculateCosts();
+            });
+            $('#slider_supplyCharge').on('input', function () {
+                $('#text_supplyCharge').val($('#slider_supplyCharge').val());
+                calculateCosts();
+            });
+            $('#slider_flat').on('input', function () {
+                $('#text_flat').val($('#slider_flat').val());
+                calculateCosts();
+            });
+            $('#slider_flat_supplyCharge').on('input', function () {
+                $('#text_flat_supplyCharge').val($('#slider_flat_supplyCharge').val());
+                calculateCosts();
+            });
+
+            // Recalculate costs if a price text input changes and change price sliders
+            $('#text_non_summer_peak').on('input', function () {
+                $('#slider_non_summer_peak').val($('#text_non_summer_peak').val());
+                calculateCosts();
+            });
+            $('#text_non_summer_weekday_offpeak').on('input', function () {
+                $('#slider_non_summer_weekday_offpeak').val($('#text_non_summer_weekday_offpeak').val());
+                calculateCosts();
+            });
+            $('#text_non_summer_weekend_offpeak').on('input', function () {
+                $('#slider_non_summer_weekend_offpeak').val($('#text_non_summer_weekend_offpeak').val());
+                calculateCosts();
+            });
+            $('#text_non_summer_weekday_shoulder').on('input', function () {
+                $('#slider_non_summer_weekday_shoulder').val($('#text_non_summer_weekday_shoulder').val());
+                calculateCosts();
+            });
+            $('#text_non_summer_weekend_shoulder').on('input', function () {
+                $('#slider_non_summer_weekend_shoulder').val($('#text_non_summer_weekend_shoulder').val());
+                calculateCosts();
+            });
+            $('#text_summer_peak').on('input', function () {
+                $('#slider_summer_peak').val($('#text_summer_peak').val());
+                calculateCosts();
+            });
+            $('#text_summer_weekday_offpeak').on('input', function () {
+                $('#slider_summer_weekday_offpeak').val($('#text_summer_weekday_offpeak').val());
+                calculateCosts();
+            });
+            $('#text_summer_weekend_offpeak').on('input', function () {
+                $('#slider_summer_weekend_offpeak').val($('#text_summer_weekend_offpeak').val());
+                calculateCosts();
+            });
+            $('#text_summer_weekday_shoulder').on('input', function () {
+                $('#slider_summer_weekday_shoulder').val($('#text_summer_weekday_shoulder').val());
+                calculateCosts();
+            });
+            $('#text_summer_weekend_shoulder').on('input', function () {
+                $('#slider_summer_weekend_shoulder').val($('#text_summer_weekend_shoulder').val());
+                calculateCosts();
+            });
+            $('#text_supplyCharge').on('input', function () {
+                $('#slider_supplyCharge').val($('#text_supplyCharge').val());
+                calculateCosts();
+            });
+            $('#text_flat').on('input', function () {
+                $('#slider_flat').val($('#text_flat').val());
+                calculateCosts();
+            });
+            $('#text_flat_supplyCharge').on('input', function () {
+                $('#slider_flat_supplyCharge').val($('#text_flat_supplyCharge').val());
+                calculateCosts();
+            });
+
+            rangeSlider_summer_start.noUiSlider.on("change", calculateCosts);
+            rangeSlider_summer_end.noUiSlider.on("change", calculateCosts);
+            slider_summer_weekday.noUiSlider.on("change", calculateCosts);
+            slider_summer_weekend.noUiSlider.on("change", calculateCosts);
+            slider_non_summer_weekday.noUiSlider.on("change", calculateCosts);
+            slider_non_summer_weekend.noUiSlider.on("change", calculateCosts);
+
+        </script>
+    </body>
+</html>

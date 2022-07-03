@@ -1,0 +1,261 @@
+/*
+To change this license header, choose License Headers in Project Properties.
+To change this template file, choose Tools | Templates
+and open the template in the editor.
+*/
+/* 
+    Created on : 29 Dec 2019, 21:48:59
+    Author     : david
+*/
+
+input[type=number]{
+    width: 100px;
+}
+
+input[type=file]{
+    width: 250px;
+}
+
+#drop_zone {
+    border: 2px dashed #bbb;
+    -moz-border-radius: 5px;
+    -webkit-border-radius: 5px;
+    border-radius: 5px;
+    padding: 25px;
+    text-align: center;
+    font: 20pt sans-serif bold;
+    color: #bbb;
+}
+
+
+.slidecontainer {
+    width: 100%; /* Width of the outside container */
+}
+
+/* The slider itself */
+.slider {
+    -webkit-appearance: none;  /* Override default CSS styles */
+    appearance: none;
+    width: 100%; /* Full-width */
+    height: 25px; /* Specified height */
+    background: #d3d3d3; /* Grey background */
+    outline: none; /* Remove outline */
+    opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
+    -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+    transition: opacity .2s;
+}
+
+.list_loadedFiles {
+    font-size: smaller;
+}
+
+.summer {
+    background: #f5d142;
+}
+
+.non_summer
+{
+    background: #4299f5;
+}
+
+/* Mouse-over effects */
+.slider:hover {
+    opacity: 1; /* Fully shown on mouse-over */
+}
+
+/* The slider handle (use -webkit- (Chrome, Opera, Safari, Edge) and -moz- (Firefox) to override default look) */
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none; /* Override default look */
+    appearance: none;
+    width: 25px; /* Set a specific slider handle width */
+    height: 25px; /* Slider handle height */
+    background: #000000;
+    cursor: pointer; /* Cursor on hover */
+}
+
+
+.slider::-moz-range-thumb {
+    width: 25px; /* Set a specific slider handle width */
+    height: 25px; /* Slider handle height */
+    background: #000000; 
+    cursor: pointer; /* Cursor on hover */
+}
+
+
+.peak-colour { background: #ffcccc }
+
+.offpeak-colour { background: grey; }
+
+.shoulder-colour { background:#ffff99  }
+
+.multi-slider-section {
+    margin: 20px;
+    margin-top: 40px;
+}
+
+.divTable{
+    display: table;
+    width: 100%;
+}
+.divTableRow {
+    display: table-row;
+}
+.divTableHeading {
+    background-color: #EEE;
+    display: table-header-group;
+}
+.divTableCell, .divTableHead {
+    display: table-cell;
+    padding: 10px;
+}
+.divTableHeading {
+    background-color: #EEE;
+    display: table-header-group;
+    font-weight: bold;
+}
+.divTableFoot {
+    background-color: #EEE;
+    display: table-footer-group;
+    font-weight: bold;
+}
+.divTableBody {
+    display: table-row-group;
+}
+
+a.tooltip-icon:not([href]){
+    color: #007bff;
+    font-weight: bold;
+}
+
+.sliderTable
+{
+    table-layout: fixed;
+    width: 100%;
+    white-space: nowrap;
+}
+
+.pricingOption_general
+{
+    border:#CCC;
+    border-style: dashed;
+    border-width: 2px;
+}
+
+.pricingOption_cheapest
+{
+    border: goldenrod;
+    border-style: solid;
+    border-width: 2px;
+}
+
+.summary_text {
+    color: goldenrod;
+    display: none;
+}
+
+ol {
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+    .dailyConsumption_chart
+    {
+        height: 400px;
+        display: none;
+    }
+
+@media screen and (max-width: 1600px) {
+
+
+
+    .divTableCell, .divTableHead {
+        display: block;
+        padding: 10px;
+    }
+
+    /* Force table to not be like tables anymore */
+    table, thead, tbody, th, td {
+        /*, tr { */
+        display: block; 
+    }
+
+    tr {
+        border-width: 1px;
+        border-top-style: solid;
+        display: block; 
+        margin-top: 10px;
+    }
+
+    thead tr { 
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    ol, ul {
+        padding-left: 20px;
+    }
+
+    .noUi-tooltip {
+        font-size: 50%;
+    }
+
+    td { 
+        /* Behave  like a "row" */
+        border: none;
+        position: relative;
+        /*padding-left: 50%; */
+    }
+
+
+    td:before { 
+        /* Now like a table header */
+        position: absolute;
+        /* Top/left values mimic padding */
+        top: 6px;
+        left: 6px;
+        width: 45%; 
+        padding-right: 10px; 
+        white-space: nowrap;
+    }
+
+    /*
+    Label the data
+    */
+
+    td:nth-of-type(3) { padding-left: 50%;}
+    td:nth-of-type(4) { padding-left: 50%; }
+    td:nth-of-type(5) { padding-left: 50%; }
+
+    td:not(.total_column):nth-of-type(3):before { content: "Price ($/kWh):"; }
+    td:not(.total_column):nth-of-type(4):before { content: "Units (kWh):"; }
+    td:not(.total_column):nth-of-type(5):before { content: "Cost ($):"; }
+
+    input[type=number]{
+        width: 100%;
+    }
+
+    .multi-slider-section {
+        margin-top: 20px;
+        margin-bottom: 20px;
+    }
+
+    .noUi-handle {
+        width: 12px !important;
+        right: -6px !important;
+        box-shadow: none;
+    }
+
+    .noUi-handle:before,
+    .noUi-handle:after
+    {
+        display: none;
+    }
+
+    .dailyConsumption_chart
+    {
+        height: 200px;
+    }
+
+}
